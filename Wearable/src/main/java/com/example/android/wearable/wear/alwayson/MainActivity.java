@@ -24,7 +24,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.support.wearable.activity.WearableActivity;
-import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
 import android.widget.TextView;
 
@@ -124,22 +123,14 @@ public class MainActivity extends WearableActivity {
                 ambientStateIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT);
 
+        mTimeTextView = (TextView) findViewById(R.id.time);
+        mTimeStampTextView = (TextView) findViewById(R.id.time_stamp);
+        mStateTextView = (TextView) findViewById(R.id.state);
+        mUpdateRateTextView = (TextView) findViewById(R.id.update_rate);
+        mDrawCountTextView = (TextView) findViewById(R.id.draw_count);
 
-        /** Determines whether watch is round or square and applies proper view. **/
-        final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
-        stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
-            @Override
-            public void onLayoutInflated(WatchViewStub stub) {
+        refreshDisplayAndSetNextUpdate();
 
-                mTimeTextView = (TextView) stub.findViewById(R.id.time);
-                mTimeStampTextView = (TextView) stub.findViewById(R.id.time_stamp);
-                mStateTextView = (TextView) stub.findViewById(R.id.state);
-                mUpdateRateTextView = (TextView) stub.findViewById(R.id.update_rate);
-                mDrawCountTextView = (TextView) stub.findViewById(R.id.draw_count);
-
-                refreshDisplayAndSetNextUpdate();
-            }
-        });
     }
 
     /**

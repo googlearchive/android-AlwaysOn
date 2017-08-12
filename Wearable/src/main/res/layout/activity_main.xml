@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <!-- Copyright (C) 2015 The Android Open Source Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,15 +13,54 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<android.support.wearable.view.WatchViewStub
+<android.support.wear.widget.BoxInsetLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/watch_view_stub"
+    android:background="@color/dark_grey"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    app:rectLayout="@layout/rect_activity_main"
-    app:roundLayout="@layout/round_activity_main"
-    tools:context=".MainActivity"
-    tools:deviceIds="wear">
-</android.support.wearable.view.WatchViewStub>
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        app:boxedEdges="all">
+
+        <TextView
+            android:id="@+id/time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="24sp"
+            android:text="Hello, time!"/>
+
+        <TextView
+            android:id="@+id/time_stamp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hello, timestamp!"/>
+
+        <TextView
+            android:id="@+id/state"
+            android:textColor="@color/green"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hello, state!"/>
+
+        <TextView
+            android:id="@+id/update_rate"
+            android:textColor="@color/green"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hello, update rate!"/>
+
+        <TextView
+            android:id="@+id/draw_count"
+            android:textColor="@color/green"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Hello, draw count!"/>
+
+    </LinearLayout>
+</android.support.wear.widget.BoxInsetLayout>
