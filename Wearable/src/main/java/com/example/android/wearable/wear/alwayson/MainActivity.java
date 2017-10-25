@@ -15,16 +15,20 @@
  */
 package com.example.android.wearable.wear.alwayson;
 
+import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.support.wearable.activity.WearableActivity;
+import android.support.wear.ambient.AmbientMode;
 import android.util.Log;
+import android.view.View;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
@@ -34,36 +38,41 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Demonstrates support for Ambient screens by extending WearableActivity and overriding
- * onEnterAmbient, onUpdateAmbient, and onExitAmbient.
+ * Demonstrates support for <i>Ambient Mode</i> by attaching ambient mode support to the activity,
+ * and listening for ambient mode updates (onEnterAmbient, onUpdateAmbient, and onExitAmbient) via a
+ * named AmbientCallback subclass.
  *
- * There are two modes (Active and Ambient). To trigger future updates (data/screen), we use a
- * custom Handler for the "Active" mode and an Alarm for the "Ambient" mode.
+ * <p>Also demonstrates how to update the display more frequently than every 60 seconds, which is
+ * the default frequency, using an AlarmManager. The Alarm code is only necessary for the custom
+ * refresh frequency; it can be ignored for basic ambient mode support where you can simply rely on
+ * calls to onUpdateAmbient() by the system.
  *
- * Why don't we use just one? Handlers are generally less battery intensive and can be triggered
- * every second. However, they can not wake up the processor (common in Ambient mode).
+ * <p>There are two modes: <i>ambient</i> and <i>active</i>. To trigger future display updates, we
+ * use a custom Handler for active mode and an Alarm for ambient mode.
  *
- * Alarms can wake up the processor (what we need for Ambient), but they struggle with quick updates
- * (less than one second) and are much less efficient compared to Handlers.
+ * <p>Why not use just one or the other? Handlers are generally less battery intensive and can be
+ * triggered every second. However, they can not wake up the processor (common in ambient mode).
  *
- * Therefore, we use Handlers for "Active" mode (can trigger every second and are better on the
- * battery), and we use Alarms for "Ambient" mode (only need to update once every 20 seconds and
+ * <p>Alarms can wake up the processor (what we need for ambient move), but they are less efficient
+ * compared to Handlers when it comes to quick update frequencies.
+ *
+ * <p>Therefore, we use Handler for active mode (can trigger every second and are better on the
+ * battery), and we use an Alarm for ambient mode (only need to update once every 10 seconds and
  * they can wake up a sleeping processor).
  *
- * Again, the Activity waits 20 seconds between doing any processing (getting data, updating screen
- * etc.) while in ambient mode to conserving battery life (processor allowed to sleep). If you can
- * hold off on updates for a full minute, you can throw away all the Alarm code and just use
+ * <p>The activity waits 10 seconds between doing any processing (getting data, updating display
+ * etc.) while in ambient mode to conserving battery life (processor allowed to sleep). If your app
+ * can wait 60 seconds for display updates, you can disregard the Alarm code and simply use
  * onUpdateAmbient() to save even more battery life.
  *
- * As always, you will still want to apply the performance guidelines outlined in the Watch Faces
- * documention to your app.
+ * <p>As always, you will still want to apply the performance guidelines outlined in the Watch Faces
+ * documentation to your app.
  *
- * Finally, in ambient mode, this Activity follows the same best practices outlined in the
- * Watch Faces API documentation, e.g., keep most pixels black, avoid large blocks of white pixels,
- * use only black and white, and disable anti-aliasing.
- *
+ * <p>Finally, in ambient mode, this activity follows the same best practices outlined in the Watch
+ * Faces API documentation: keeping most pixels black, avoiding large blocks of white pixels, using
+ * only black and white, disabling anti-aliasing, etc.
  */
-public class MainActivity extends WearableActivity {
+public class MainActivity extends Activity implements AmbientMode.AmbientCallbackProvider {
 
     private static final String TAG = "MainActivity";
 
@@ -72,38 +81,59 @@ public class MainActivity extends WearableActivity {
 
     /** Milliseconds between updates based on state. */
     private static final long ACTIVE_INTERVAL_MS = TimeUnit.SECONDS.toMillis(1);
-    private static final long AMBIENT_INTERVAL_MS = TimeUnit.SECONDS.toMillis(20);
 
-    /** Tracks latest ambient details, such as burnin offsets, etc. */
-    private Bundle mAmbientDetails;
+    private static final long AMBIENT_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10);
 
+    /** Action for updating the display in ambient mode, per our custom refresh cycle. */
+    private static final String AMBIENT_UPDATE_ACTION =
+            "com.example.android.wearable.wear.alwayson.action.AMBIENT_UPDATE";
+
+    /** Number of pixels to offset the content rendered in the display to prevent screen burn-in. */
+    private static final int BURN_IN_OFFSET_PX = 10;
+
+    /**
+     * Ambient mode controller attached to this display. Used by Activity to see if it is in
+     * ambient mode.
+     */
+    private AmbientMode.AmbientController mAmbientController;
+
+    /** If the display is low-bit in ambient mode. i.e. it requires anti-aliased fonts. */
+    boolean mIsLowBitAmbient;
+
+    /**
+     * If the display requires burn-in protection in ambient mode, rendered pixels need to be
+     * intermittently offset to avoid screen burn-in.
+     */
+    boolean mDoBurnInProtection;
+
+    private View mContentView;
     private TextView mTimeTextView;
     private TextView mTimeStampTextView;
     private TextView mStateTextView;
     private TextView mUpdateRateTextView;
     private TextView mDrawCountTextView;
 
-    private final SimpleDateFormat sDateFormat =
-            new SimpleDateFormat("HH:mm:ss", Locale.US);
+    private final SimpleDateFormat sDateFormat = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
     private volatile int mDrawCount = 0;
-
 
     /**
      * Since the handler (used in active mode) can't wake up the processor when the device is in
      * ambient mode and undocked, we use an Alarm to cover ambient mode updates when we need them
-     * more frequently than every minute. Remember, if getting updates once a minute in ambient
-     * mode is enough, you can do away with the Alarm code and just rely on the onUpdateAmbient()
+     * more frequently than every minute. Remember, if getting updates once a minute in ambient mode
+     * is enough, you can do away with the Alarm code and just rely on the onUpdateAmbient()
      * callback.
      */
-    private AlarmManager mAmbientStateAlarmManager;
-    private PendingIntent mAmbientStatePendingIntent;
+    private AlarmManager mAmbientUpdateAlarmManager;
+
+    private PendingIntent mAmbientUpdatePendingIntent;
+    private BroadcastReceiver mAmbientUpdateBroadcastReceiver;
 
     /**
      * This custom handler is used for updates in "Active" mode. We use a separate static class to
      * help us avoid memory leaks.
      */
-    private final Handler mActiveModeUpdateHandler = new UpdateHandler(this);
+    private final Handler mActiveModeUpdateHandler = new ActiveModeUpdateHandler(this);
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -112,127 +142,72 @@ public class MainActivity extends WearableActivity {
 
         setContentView(R.layout.activity_main);
 
-        setAmbientEnabled();
+        mAmbientController = AmbientMode.attachAmbientSupport(this);
 
-        mAmbientStateAlarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
-        Intent ambientStateIntent = new Intent(getApplicationContext(), MainActivity.class);
+        mAmbientUpdateAlarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
 
-        mAmbientStatePendingIntent = PendingIntent.getActivity(
-                getApplicationContext(),
-                0 /* requestCode */,
-                ambientStateIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
+        /*
+         * Create a PendingIntent which we'll give to the AlarmManager to send ambient mode updates
+         * on an interval which we've define.
+         */
+        Intent ambientUpdateIntent = new Intent(AMBIENT_UPDATE_ACTION);
 
-        mTimeTextView = (TextView) findViewById(R.id.time);
-        mTimeStampTextView = (TextView) findViewById(R.id.time_stamp);
-        mStateTextView = (TextView) findViewById(R.id.state);
-        mUpdateRateTextView = (TextView) findViewById(R.id.update_rate);
-        mDrawCountTextView = (TextView) findViewById(R.id.draw_count);
+        /*
+         * Retrieves a PendingIntent that will perform a broadcast. You could also use getActivity()
+         * to retrieve a PendingIntent that will start a new activity, but be aware that actually
+         * triggers onNewIntent() which causes lifecycle changes (onPause() and onResume()) which
+         * might trigger code to be re-executed more often than you want.
+         *
+         * If you do end up using getActivity(), also make sure you have set activity launchMode to
+         * singleInstance in the manifest.
+         *
+         * Otherwise, it is easy for the AlarmManager launch Intent to open a new activity
+         * every time the Alarm is triggered rather than reusing this Activity.
+         */
+        mAmbientUpdatePendingIntent =
+                PendingIntent.getBroadcast(
+                        this, 0, ambientUpdateIntent, PendingIntent.FLAG_UPDATE_CURRENT);
 
-        refreshDisplayAndSetNextUpdate();
+        /*
+         * An anonymous broadcast receiver which will receive ambient update requests and trigger
+         * display refresh.
+         */
+        mAmbientUpdateBroadcastReceiver =
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        refreshDisplayAndSetNextUpdate();
+                    }
+                };
 
+        mContentView = findViewById(R.id.content_view);
+        mTimeTextView = findViewById(R.id.time);
+        mTimeStampTextView = findViewById(R.id.time_stamp);
+        mStateTextView = findViewById(R.id.state);
+        mUpdateRateTextView = findViewById(R.id.update_rate);
+        mDrawCountTextView = findViewById(R.id.draw_count);
     }
 
-    /**
-     * This is mostly triggered by the Alarms we set in Ambient mode and informs us we need to
-     * update the screen (and process any data).
-     */
     @Override
-    public void onNewIntent(Intent intent) {
-        Log.d(TAG, "onNewIntent(): " + intent);
-        super.onNewIntent(intent);
+    public void onResume() {
+        Log.d(TAG, "onResume()");
+        super.onResume();
 
-        setIntent(intent);
+        IntentFilter filter = new IntentFilter(AMBIENT_UPDATE_ACTION);
+        registerReceiver(mAmbientUpdateBroadcastReceiver, filter);
 
         refreshDisplayAndSetNextUpdate();
     }
 
     @Override
-    public void onDestroy() {
-        Log.d(TAG, "onDestroy()");
+    public void onPause() {
+        Log.d(TAG, "onPause()");
+        super.onPause();
+
+        unregisterReceiver(mAmbientUpdateBroadcastReceiver);
 
         mActiveModeUpdateHandler.removeMessages(MSG_UPDATE_SCREEN);
-        mAmbientStateAlarmManager.cancel(mAmbientStatePendingIntent);
-
-        super.onDestroy();
-    }
-
-    /**
-     * Prepares UI for Ambient view.
-     */
-    @Override
-    public void onEnterAmbient(Bundle ambientDetails) {
-        Log.d(TAG, "onEnterAmbient()");
-        super.onEnterAmbient(ambientDetails);
-
-        /**
-         * In this sample, we aren't using the ambient details bundle (EXTRA_BURN_IN_PROTECTION or
-         * EXTRA_LOWBIT_AMBIENT), but if you need them, you can pull them from the local variable
-         * set here.
-         */
-        mAmbientDetails = ambientDetails;
-
-        /** Clears Handler queue (only needed for updates in active mode). */
-        mActiveModeUpdateHandler.removeMessages(MSG_UPDATE_SCREEN);
-
-        /**
-         * Following best practices outlined in WatchFaces API (keeping most pixels black,
-         * avoiding large blocks of white pixels, using only black and white,
-         * and disabling anti-aliasing anti-aliasing, etc.)
-         */
-        mStateTextView.setTextColor(Color.WHITE);
-        mUpdateRateTextView.setTextColor(Color.WHITE);
-        mDrawCountTextView.setTextColor(Color.WHITE);
-
-        mTimeTextView.getPaint().setAntiAlias(false);
-        mTimeStampTextView.getPaint().setAntiAlias(false);
-        mStateTextView.getPaint().setAntiAlias(false);
-        mUpdateRateTextView.getPaint().setAntiAlias(false);
-        mDrawCountTextView.getPaint().setAntiAlias(false);
-
-        refreshDisplayAndSetNextUpdate();
-    }
-
-    /**
-     * Updates UI in Ambient view (once a minute). Because we need to update UI sooner than that
-     * (every ~20 seconds), we also use an Alarm. However, since the processor is awake for this
-     * callback, we might as well call refreshDisplayAndSetNextUpdate() to update screen and reset
-     * the Alarm.
-     *
-     * If you are happy with just updating the screen once a minute in Ambient Mode (which will be
-     * the case a majority of the time), then you can just use this method and remove all
-     * references/code regarding Alarms.
-     */
-    @Override
-    public void onUpdateAmbient() {
-        Log.d(TAG, "onUpdateAmbient()");
-        super.onUpdateAmbient();
-
-        refreshDisplayAndSetNextUpdate();
-    }
-
-    /**
-     * Prepares UI for Active view (non-Ambient).
-     */
-    @Override
-    public void onExitAmbient() {
-        Log.d(TAG, "onExitAmbient()");
-        super.onExitAmbient();
-
-        /** Clears out Alarms since they are only used in ambient mode. */
-        mAmbientStateAlarmManager.cancel(mAmbientStatePendingIntent);
-
-        mStateTextView.setTextColor(Color.GREEN);
-        mUpdateRateTextView.setTextColor(Color.GREEN);
-        mDrawCountTextView.setTextColor(Color.GREEN);
-
-        mTimeTextView.getPaint().setAntiAlias(true);
-        mTimeStampTextView.getPaint().setAntiAlias(true);
-        mStateTextView.getPaint().setAntiAlias(true);
-        mUpdateRateTextView.getPaint().setAntiAlias(true);
-        mDrawCountTextView.getPaint().setAntiAlias(true);
-
-        refreshDisplayAndSetNextUpdate();
+        mAmbientUpdateAlarmManager.cancel(mAmbientUpdatePendingIntent);
     }
 
     /**
@@ -245,23 +220,15 @@ public class MainActivity extends WearableActivity {
 
         long timeMs = System.currentTimeMillis();
 
-        if (isAmbient()) {
-            /** Calculate next trigger time (based on state). */
+        if (mAmbientController.isAmbient()) {
+            /* Calculate next trigger time (based on state). */
             long delayMs = AMBIENT_INTERVAL_MS - (timeMs % AMBIENT_INTERVAL_MS);
             long triggerTimeMs = timeMs + delayMs;
 
-            /**
-             * Note: Make sure you have set activity launchMode to singleInstance in the manifest.
-             * Otherwise, it is easy for the AlarmManager launch intent to open a new activity
-             * every time the Alarm is triggered rather than reusing this Activity.
-             */
-            mAmbientStateAlarmManager.setExact(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerTimeMs,
-                    mAmbientStatePendingIntent);
-
+            mAmbientUpdateAlarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP, triggerTimeMs, mAmbientUpdatePendingIntent);
         } else {
-            /** Calculate next trigger time (based on state). */
+            /* Calculate next trigger time (based on state). */
             long delayMs = ACTIVE_INTERVAL_MS - (timeMs % ACTIVE_INTERVAL_MS);
 
             mActiveModeUpdateHandler.removeMessages(MSG_UPDATE_SCREEN);
@@ -269,16 +236,20 @@ public class MainActivity extends WearableActivity {
         }
     }
 
-    /**
-     * Updates display based on Ambient state. If you need to pull data, you should do it here.
-     */
+    /** Updates display based on Ambient state. If you need to pull data, you should do it here. */
     private void loadDataAndUpdateScreen() {
 
         mDrawCount += 1;
         long currentTimeMs = System.currentTimeMillis();
-        Log.d(TAG, "loadDataAndUpdateScreen(): " + currentTimeMs + "(" + isAmbient() + ")");
+        Log.d(
+                TAG,
+                "loadDataAndUpdateScreen(): "
+                        + currentTimeMs
+                        + "("
+                        + mAmbientController.isAmbient()
+                        + ")");
 
-        if (isAmbient()) {
+        if (mAmbientController.isAmbient()) {
 
             mTimeTextView.setText(sDateFormat.format(new Date()));
             mTimeStampTextView.setText(getString(R.string.timestamp_label, currentTimeMs));
@@ -290,6 +261,7 @@ public class MainActivity extends WearableActivity {
             mDrawCountTextView.setText(getString(R.string.draw_count_label, mDrawCount));
 
         } else {
+
             mTimeTextView.setText(sDateFormat.format(new Date()));
             mTimeStampTextView.setText(getString(R.string.timestamp_label, currentTimeMs));
 
@@ -301,14 +273,108 @@ public class MainActivity extends WearableActivity {
         }
     }
 
-    /**
-     * Handler separated into static class to avoid memory leaks.
-     */
-    private static class UpdateHandler extends Handler {
+    @Override
+    public AmbientMode.AmbientCallback getAmbientCallback() {
+        return new MyAmbientCallback();
+    }
+
+    private class MyAmbientCallback extends AmbientMode.AmbientCallback {
+        /** Prepares the UI for ambient mode. */
+        @Override
+        public void onEnterAmbient(Bundle ambientDetails) {
+            super.onEnterAmbient(ambientDetails);
+
+            mIsLowBitAmbient = ambientDetails.getBoolean(AmbientMode.EXTRA_LOWBIT_AMBIENT, false);
+            mDoBurnInProtection =
+                    ambientDetails.getBoolean(AmbientMode.EXTRA_BURN_IN_PROTECTION, false);
+
+            /* Clears Handler queue (only needed for updates in active mode). */
+            mActiveModeUpdateHandler.removeMessages(MSG_UPDATE_SCREEN);
+
+            /*
+             * Following best practices outlined in WatchFaces API (keeping most pixels black,
+             * avoiding large blocks of white pixels, using only black and white, and disabling
+             * anti-aliasing, etc.)
+             */
+            mStateTextView.setTextColor(Color.WHITE);
+            mUpdateRateTextView.setTextColor(Color.WHITE);
+            mDrawCountTextView.setTextColor(Color.WHITE);
+
+            if (mIsLowBitAmbient) {
+                mTimeTextView.getPaint().setAntiAlias(false);
+                mTimeStampTextView.getPaint().setAntiAlias(false);
+                mStateTextView.getPaint().setAntiAlias(false);
+                mUpdateRateTextView.getPaint().setAntiAlias(false);
+                mDrawCountTextView.getPaint().setAntiAlias(false);
+            }
+
+            refreshDisplayAndSetNextUpdate();
+        }
+
+        /**
+         * Updates the display in ambient mode on the standard interval. Since we're using a custom
+         * refresh cycle, this method does NOT update the data in the display. Rather, this method
+         * simply updates the positioning of the data in the screen to avoid burn-in, if the display
+         * requires it.
+         */
+        @Override
+        public void onUpdateAmbient() {
+            super.onUpdateAmbient();
+
+            /*
+             * If the screen requires burn-in protection, views must be shifted around periodically
+             * in ambient mode. To ensure that content isn't shifted off the screen, avoid placing
+             * content within 10 pixels of the edge of the screen.
+             *
+             * Since we're potentially applying negative padding, we have ensured
+             * that the containing view is sufficiently padded (see res/layout/activity_main.xml).
+             *
+             * Activities should also avoid solid white areas to prevent pixel burn-in. Both of
+             * these requirements only apply in ambient mode, and only when this property is set
+             * to true.
+             */
+            if (mDoBurnInProtection) {
+                int x = (int) (Math.random() * 2 * BURN_IN_OFFSET_PX - BURN_IN_OFFSET_PX);
+                int y = (int) (Math.random() * 2 * BURN_IN_OFFSET_PX - BURN_IN_OFFSET_PX);
+                mContentView.setPadding(x, y, 0, 0);
+            }
+        }
+
+        /** Restores the UI to active (non-ambient) mode. */
+        @Override
+        public void onExitAmbient() {
+            super.onExitAmbient();
+
+            /* Clears out Alarms since they are only used in ambient mode. */
+            mAmbientUpdateAlarmManager.cancel(mAmbientUpdatePendingIntent);
+
+            mStateTextView.setTextColor(Color.GREEN);
+            mUpdateRateTextView.setTextColor(Color.GREEN);
+            mDrawCountTextView.setTextColor(Color.GREEN);
+
+            if (mIsLowBitAmbient) {
+                mTimeTextView.getPaint().setAntiAlias(true);
+                mTimeStampTextView.getPaint().setAntiAlias(true);
+                mStateTextView.getPaint().setAntiAlias(true);
+                mUpdateRateTextView.getPaint().setAntiAlias(true);
+                mDrawCountTextView.getPaint().setAntiAlias(true);
+            }
+
+            /* Reset any random offset applied for burn-in protection. */
+            if (mDoBurnInProtection) {
+                mContentView.setPadding(0, 0, 0, 0);
+            }
+
+            refreshDisplayAndSetNextUpdate();
+        }
+    }
+
+    /** Handler separated into static class to avoid memory leaks. */
+    private static class ActiveModeUpdateHandler extends Handler {
         private final WeakReference<MainActivity> mMainActivityWeakReference;
 
-        public UpdateHandler(MainActivity reference) {
-            mMainActivityWeakReference = new WeakReference<MainActivity>(reference);
+        ActiveModeUpdateHandler(MainActivity reference) {
+            mMainActivityWeakReference = new WeakReference<>(reference);
         }
 
         @Override

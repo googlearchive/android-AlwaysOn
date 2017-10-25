@@ -13,25 +13,34 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
+
+<!--
+    NOTE: There is 10px, NOT 10dp, padding to ensure that the burn-in protection (+/- 10px),
+    which is applied as padding to the inner LinearLayout, doesn't obscure text by moving it off
+    screen.
+-->
 <android.support.wear.widget.BoxInsetLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:background="@color/dark_grey"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:padding="10px"
     tools:context=".MainActivity">
 
     <LinearLayout
+        android:id="@+id/content_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
+        android:gravity="center"
         app:boxedEdges="all">
 
         <TextView
             android:id="@+id/time"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center"
             android:textSize="24sp"
             android:text="Hello, time!"/>
 
@@ -39,27 +48,31 @@
             android:id="@+id/time_stamp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center"
             android:text="Hello, timestamp!"/>
 
         <TextView
             android:id="@+id/state"
-            android:textColor="@color/green"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="@color/green"
             android:text="Hello, state!"/>
 
         <TextView
             android:id="@+id/update_rate"
-            android:textColor="@color/green"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="@color/green"
             android:text="Hello, update rate!"/>
 
         <TextView
             android:id="@+id/draw_count"
-            android:textColor="@color/green"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center"
+            android:textColor="@color/green"
             android:text="Hello, draw count!"/>
 
     </LinearLayout>
