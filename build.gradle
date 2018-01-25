@@ -9,3 +9,9 @@
 
 
 
+
+buildscript {
+    repositories {
+        google()
+    }
+}

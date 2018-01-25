@@ -24,8 +24,8 @@ As always, you will still want to apply the [performance guidelines][3] outlined
 Pre-requisites
 --------------
 
-- Android SDK 26
-- Android Build Tools v26.0.1
+- Android SDK 27
+- Android Build Tools v27.0.2
 - Android Support Repository
 
 Screenshots
