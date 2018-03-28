@@ -2,7 +2,7 @@
 Android AlwaysOn Sample
 ===================================
 
-A basic sample showing how to support ambient mode for native Android Wear apps.
+A basic sample showing how to support ambient mode for native Wear apps.
 
 Introduction
 ------------
@@ -25,7 +25,7 @@ Pre-requisites
 --------------
 
 - Android SDK 27
-- Android Build Tools v27.0.2
+- Android Build Tools v27.0.3
 - Android Support Repository
 
 Screenshots
