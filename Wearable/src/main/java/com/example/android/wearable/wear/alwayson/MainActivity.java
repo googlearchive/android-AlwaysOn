@@ -15,7 +15,6 @@
  */
 package com.example.android.wearable.wear.alwayson;
 
-import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -26,7 +25,8 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.support.wear.ambient.AmbientMode;
+import android.support.v4.app.FragmentActivity;
+import android.support.wear.ambient.AmbientModeSupport;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
@@ -72,7 +72,8 @@ import java.util.concurrent.TimeUnit;
  * Faces API documentation: keeping most pixels black, avoiding large blocks of white pixels, using
  * only black and white, disabling anti-aliasing, etc.
  */
-public class MainActivity extends Activity implements AmbientMode.AmbientCallbackProvider {
+public class MainActivity extends FragmentActivity
+        implements AmbientModeSupport.AmbientCallbackProvider {
 
     private static final String TAG = "MainActivity";
 
@@ -92,10 +93,10 @@ public class MainActivity extends Activity implements AmbientMode.AmbientCallbac
     private static final int BURN_IN_OFFSET_PX = 10;
 
     /**
-     * Ambient mode controller attached to this display. Used by Activity to see if it is in
-     * ambient mode.
+     * Ambient mode controller attached to this display. Used by Activity to see if it is in ambient
+     * mode.
      */
-    private AmbientMode.AmbientController mAmbientController;
+    private AmbientModeSupport.AmbientController mAmbientController;
 
     /** If the display is low-bit in ambient mode. i.e. it requires anti-aliased fonts. */
     boolean mIsLowBitAmbient;
@@ -142,7 +143,7 @@ public class MainActivity extends Activity implements AmbientMode.AmbientCallbac
 
         setContentView(R.layout.activity_main);
 
-        mAmbientController = AmbientMode.attachAmbientSupport(this);
+        mAmbientController = AmbientModeSupport.attach(this);
 
         mAmbientUpdateAlarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
 
@@ -274,19 +275,20 @@ public class MainActivity extends Activity implements AmbientMode.AmbientCallbac
     }
 
     @Override
-    public AmbientMode.AmbientCallback getAmbientCallback() {
+    public AmbientModeSupport.AmbientCallback getAmbientCallback() {
         return new MyAmbientCallback();
     }
 
-    private class MyAmbientCallback extends AmbientMode.AmbientCallback {
+    private class MyAmbientCallback extends AmbientModeSupport.AmbientCallback {
         /** Prepares the UI for ambient mode. */
         @Override
         public void onEnterAmbient(Bundle ambientDetails) {
             super.onEnterAmbient(ambientDetails);
 
-            mIsLowBitAmbient = ambientDetails.getBoolean(AmbientMode.EXTRA_LOWBIT_AMBIENT, false);
+            mIsLowBitAmbient =
+                    ambientDetails.getBoolean(AmbientModeSupport.EXTRA_LOWBIT_AMBIENT, false);
             mDoBurnInProtection =
-                    ambientDetails.getBoolean(AmbientMode.EXTRA_BURN_IN_PROTECTION, false);
+                    ambientDetails.getBoolean(AmbientModeSupport.EXTRA_BURN_IN_PROTECTION, false);
 
             /* Clears Handler queue (only needed for updates in active mode). */
             mActiveModeUpdateHandler.removeMessages(MSG_UPDATE_SCREEN);
